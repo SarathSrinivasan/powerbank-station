@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Home - PREMIUM POWER</title>
+<script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<style>
+*{box-sizing:border-box}
+body{margin:0;font-family:Arial,Helvetica,sans-serif;background:#f4f7fb;color:#17212b}
+.container{width:min(480px,100%);margin:auto;padding:24px 16px;min-height:100vh}
+.brand{text-align:center;padding:18px 0 22px}
+.logo{width:68px;height:68px;border-radius:18px;margin:auto;background:#111;color:#fff;display:flex;align-items:center;justify-content:center;font-size:32px}
+h1{margin:12px 0 5px;font-size:27px}.subtitle{color:#6c7781}
+.card{background:#fff;border-radius:20px;padding:22px;margin:14px 0;box-shadow:0 8px 30px rgba(0,0,0,.07)}
+button{width:100%;padding:15px;border:0;border-radius:13px;font-size:17px;font-weight:700;cursor:pointer;margin-top:10px}
+.primary{background:#111;color:#fff}.secondary{background:#e9eef3;color:#17212b}.success{background:#0b875b;color:#fff}.danger{background:#c62828;color:#fff}
+button:disabled{background:#b9c0c6;color:#fff;cursor:not-allowed}
+.back{background:transparent;color:#555;text-align:left;padding:4px 0;margin:0}
+.row{display:flex;justify-content:space-between;padding:12px 0;border-bottom:1px solid #edf0f2;gap:15px}.row:last-child{border:0}
+.label{color:#69747e}.value{font-weight:700;text-align:right}
+.status{padding:13px;border-radius:12px;background:#f1f4f6;margin:12px 0}
+.choice{border:2px solid #e1e6eb;padding:17px;border-radius:14px;margin:10px 0;cursor:pointer}
+.choice:hover{border-color:#999}.choice.selected{border-color:#111;background:#f4f4f4}
+.small{font-size:12px;color:#707b84;word-break:break-all}.muted{color:#7a858e;font-size:13px}
+#qrcode{display:flex;justify-content:center;padding:18px}#qrcode canvas,#qrcode img{padding:10px;background:#fff}
+.popup{position:fixed;inset:0;background:rgba(0,0,0,.55);display:none;align-items:center;justify-content:center;padding:20px;z-index:20}
+.popup.show{display:flex}.popupbox{background:#fff;border-radius:20px;padding:25px;width:min(380px,100%);text-align:center}.icon{font-size:45px}
+.log{background:#111;color:#cfe8da;border-radius:12px;padding:12px;white-space:pre-wrap;font:12px Consolas,monospace;max-height:180px;overflow:auto}
+</style>
+</head>
+<body>
+
+<div class="container">
+<div class="brand"><div class="logo">🔋</div><h1>PREMIUM POWER</h1><div class="subtitle">Smart PowerBank Rental Station</div></div>
+<div class="card">
+<div class="row"><span class="label">Station</span><span class="value">POWERBANK001</span></div>
+<div class="row"><span class="label">Service</span><span class="value">PowerBank Rental</span></div>
+<a href="rent.html"><button class="primary">RENT A POWER BANK</button></a>
+<a href="return.html"><button class="secondary">RETURN POWER BANK</button></a>
+</div>
+<div class="card">
+<div id="mqttStatus" class="status">🟠 Checking MQTT service...</div>
+<div class="muted">Scan this QR code to open this rental page.</div>
+<div id="qrcode"></div>
+<div class="small">https://sarathsrinivasan.github.io/powerbank-station/</div>
+</div>
+</div>
+
+<script>
+
+const MQTT_BROKER="wss://broker.emqx.io:8084/mqtt";
+const COMPANY_NAME="PREMIUM POWER";
+const STATION_ID="POWERBANK001";
+const STATION_NUMBER="001";
+const TOPIC_RENT_REQUEST=`POWERBANK/${STATION_NUMBER}/RENT_REQUEST`;
+const TOPIC_AVAILABILITY=`POWERBANK/${STATION_NUMBER}/AVAILABILITY`;
+const TOPIC_PAYMENT=`POWERBANK/${STATION_NUMBER}/PAYMENT`;
+const TOPIC_RETURN=`POWERBANK/${STATION_NUMBER}/RETURN`;
+
+function randomHex(n){const c="0123456789ABCDEF";let s="";for(let i=0;i<n;i++)s+=c[Math.floor(Math.random()*c.length)];return s}
+function generateRequestId(){return "REQ-"+randomHex(10)}
+function generateCustomerId(){return "CUS-"+randomHex(12)}
+function generateTransactionId(){return "TXN-"+randomHex(12)}
+function mqttClientId(){return "POWERBANK_WEB_"+Date.now()+"_"+randomHex(8)}
+
+function connectMQTT(onMessage){
+    return new Promise((resolve,reject)=>{
+        if(typeof mqtt==="undefined"){reject(new Error("MQTT.js did not load"));return}
+        const client=mqtt.connect(MQTT_BROKER,{
+            clientId:mqttClientId(),protocolVersion:4,clean:true,
+            connectTimeout:10000,keepalive:60,reconnectPeriod:3000,resubscribe:true
+        });
+        client.on("connect",()=>resolve(client));
+        client.on("message",(topic,payload)=>onMessage&&onMessage(topic,payload.toString()));
+        client.on("error",err=>{console.error("MQTT:",err.message||err);});
+    });
+}
+function saveSession(data){localStorage.setItem("powerbank_session",JSON.stringify(data))}
+function getSession(){try{return JSON.parse(localStorage.getItem("powerbank_session")||"null")}catch(e){return null}}
+function clearSession(){localStorage.removeItem("powerbank_session")}
+function escapeHtml(v){return String(v).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#039;")}
+
+
+const status=document.getElementById("mqttStatus");
+connectMQTT().then(c=>{status.textContent="🟢 MQTT Service Available";status.style.background="#eaf8ef";c.end()})
+.catch(e=>{status.textContent="🔴 MQTT Unavailable";status.style.background="#fdecec"});
+const url="https://sarathsrinivasan.github.io/powerbank-station/";
+new QRCode(document.getElementById("qrcode"),{text:url,width:230,height:230,correctLevel:QRCode.CorrectLevel.H});
+
+</script>
+</body>
+</html>
